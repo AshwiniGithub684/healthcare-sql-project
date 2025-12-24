@@ -1,0 +1,155 @@
+-- 02_analysis_queries.sql
+-- Run these queries after loading sample data into `healthcare`.
+
+-- 0. Quick preview
+SELECT * FROM healthcare LIMIT 20;
+
+-- 1. Total records
+SELECT COUNT(*) AS total_records FROM healthcare;
+
+-- 2. Max and average age
+SELECT MAX(age) AS max_age, ROUND(AVG(age),0) AS avg_age FROM healthcare;
+
+-- 3. Patients by age (descending)
+SELECT age, COUNT(*) AS total
+FROM healthcare
+GROUP BY age
+ORDER BY age DESC;
+
+-- 4. Most common ages (ranked)
+SELECT age, COUNT(*) AS total,
+       DENSE_RANK() OVER (ORDER BY COUNT(*) DESC, age DESC) AS rank_by_count
+FROM healthcare
+GROUP BY age
+ORDER BY rank_by_count;
+
+-- 5. Medical condition counts
+SELECT medical_condition, COUNT(*) AS total_patients
+FROM healthcare
+GROUP BY medical_condition
+ORDER BY total_patients DESC;
+
+-- 6. Top medications per condition (ranked)
+SELECT medical_condition, medication, COUNT(*) AS med_count,
+       RANK() OVER (PARTITION BY medical_condition ORDER BY COUNT(*) DESC) AS med_rank
+FROM healthcare
+GROUP BY medical_condition, medication
+ORDER BY medical_condition, med_rank;
+
+-- 7. Preferred insurance providers
+SELECT insurance_provider, COUNT(*) AS total
+FROM healthcare
+GROUP BY insurance_provider
+ORDER BY total DESC;
+
+-- 8. Preferred hospitals
+SELECT hospital, COUNT(*) AS total
+FROM healthcare
+GROUP BY hospital
+ORDER BY total DESC;
+
+-- 9. Average billing by medical condition
+SELECT medical_condition, ROUND(AVG(billing_amount),2) AS avg_billing
+FROM healthcare
+GROUP BY medical_condition
+ORDER BY avg_billing DESC;
+
+-- 10. Billing totals and days per admission
+SELECT
+  patient_id,
+  name,
+  hospital,
+  (discharge_date - admission_date) AS days_stayed,
+  billing_amount
+FROM healthcare
+ORDER BY hospital, days_stayed DESC;
+
+-- 11. Total days by condition and hospital
+SELECT medical_condition, hospital, SUM(discharge_date - admission_date) AS total_days
+FROM healthcare
+GROUP BY medical_condition, hospital
+ORDER BY total_days DESC;
+
+-- 12. Hospitals with 'Normal' test results and days to discharge
+SELECT hospital, medical_condition, SUM(discharge_date - admission_date) AS days_to_normal
+FROM healthcare
+WHERE test_results ILIKE 'Normal'
+GROUP BY hospital, medical_condition
+ORDER BY days_to_normal DESC;
+
+-- 13. Blood type counts for ages 20-45
+SELECT age, blood_type, COUNT(*) AS count_by_group
+FROM healthcare
+WHERE age BETWEEN 20 AND 45
+GROUP BY age, blood_type
+ORDER BY blood_type DESC, age;
+
+-- 14. Universal donor/receiver counts
+SELECT
+  SUM(CASE WHEN blood_type = 'O-' THEN 1 ELSE 0 END) AS universal_donor_count,
+  SUM(CASE WHEN blood_type = 'AB+' THEN 1 ELSE 0 END) AS universal_receiver_count
+FROM healthcare;
+
+-- 15. Simple PL/pgSQL function: find an O- donor for an AB+ receiver (same hospital preferred)
+-- Note: requires Postgres. Adjust or remove if using other DBs.
+CREATE OR REPLACE FUNCTION find_universal_donor(receiver_name TEXT)
+RETURNS TABLE(donor_name TEXT, donor_hospital TEXT) LANGUAGE plpgsql AS $$
+BEGIN
+  -- Try same hospital first
+  RETURN QUERY
+  SELECT h2.name, h2.hospital
+  FROM healthcare h1
+  JOIN healthcare h2 ON h1.hospital = h2.hospital
+  WHERE h1.name = receiver_name
+    AND h1.blood_type = 'AB+'
+    AND h2.blood_type = 'O-'
+  LIMIT 1;
+
+  IF NOT FOUND THEN
+    RETURN QUERY
+    SELECT name, hospital FROM healthcare WHERE blood_type = 'O-' LIMIT 1;
+  END IF;
+END;
+$$;
+
+-- Example call:
+-- SELECT * FROM find_universal_donor('Matthew Cruz');
+
+-- 16. Admissions in 2023
+SELECT hospital, COUNT(*) AS admitted_2023
+FROM healthcare
+WHERE admission_date >= '2023-01-01' AND admission_date < '2024-01-01'
+GROUP BY hospital
+ORDER BY admitted_2023 DESC;
+
+-- 17. Billing stats by insurance provider
+SELECT insurance_provider,
+       ROUND(AVG(billing_amount),2) AS avg_amount,
+       ROUND(MIN(billing_amount),2) AS min_amount,
+       ROUND(MAX(billing_amount),2) AS max_amount
+FROM healthcare
+GROUP BY insurance_provider
+ORDER BY avg_amount DESC;
+
+-- 18. Risk category based on test_results
+SELECT name, medical_condition, test_results,
+  CASE
+    WHEN test_results ILIKE 'Inconclusive' THEN 'high'
+    WHEN test_results ILIKE 'Abnormal' THEN 'medium'
+    WHEN test_results ILIKE 'Normal' THEN 'low'
+    ELSE 'unknown'
+  END AS risk_status,
+  hospital, doctor
+FROM healthcare;
+
+-- 19. Total patients by blood group
+SELECT blood_type, COUNT(*) AS total_patients
+FROM healthcare
+GROUP BY blood_type
+ORDER BY total_patients DESC;
+
+-- 20. Total billing by insurance provider
+SELECT insurance_provider, ROUND(SUM(billing_amount),2) AS total_billing
+FROM healthcare
+GROUP BY insurance_provider
+ORDER BY total_billing DESC;
