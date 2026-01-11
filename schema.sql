@@ -1,5 +1,4 @@
 -- 01_create_table.sql
--- Create a sample healthcare table for analytics demos
 
 CREATE TABLE IF NOT EXISTS healthcare (
   patient_id SERIAL PRIMARY KEY,
@@ -19,4 +18,5 @@ CREATE TABLE IF NOT EXISTS healthcare (
   admission_type TEXT,
   medication TEXT,
   test_results TEXT
+
 );
